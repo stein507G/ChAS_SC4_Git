@@ -125,7 +125,7 @@ void InterruptDisable_rs422(void)
 	NVIC_DisableIRQ(FabricIrq0_IRQn);
 //	NVIC_ClearPendingIRQ( FabricIrq0_IRQn );
 
-// rs422 Auto Completion interrupt 
+// rs422 Auto Completion interrupt
 	NVIC_DisableIRQ(FabricIrq3_IRQn);
 //	NVIC_ClearPendingIRQ( FabricIrq3_IRQn );
 }
@@ -133,11 +133,11 @@ void InterruptDisable_rs422(void)
 void rs422_init(void)
 {
 	uint8_t i=0,j=0;
-	
+
 	rs422if.RunMode = RS422_RUN_CPUMODE;
 	rs422if.State = RS422_STATE_RUN;
 	rs422if.RxAllAllow = 0;
-	
+
 	rs422if.TSTAT = 1;	// 처음엔 완료로 셋팅
 
 	tx.Head = 0;
@@ -204,7 +204,7 @@ int rs422_PacketParse_Master()		// Chrozen LC : 주로 상태응답에 대한 처리
 //ShowMemoryWord((pRxMem + (APC_CONFIG_STASUS_SIZE*(slvid-1))), rxlen);
 
 		if(packetID > rs422_MAX_PACKET_NO) return RE_ERR;
-		
+
 		pfAPC_Rs422_Packet[packetID](slvid_addr);
 //		pfAPC_Rs422_Packet[packetID](apcif.rx_slvid);
 #endif
@@ -223,17 +223,17 @@ int rs422_PacketParse_Master()		// Chrozen LC : 주로 상태응답에 대한 처리
 int rs422_REQUEST_Send(uint32_t slvid)
 {
 // Master에서 주기적으로 요청한다.
-// 상태값을 요청하고 , FPGA에서 자동으로 읽어 들인다.	
+// 상태값을 요청하고 , FPGA에서 자동으로 읽어 들인다.
 // GLOBAL ID로 설정하지 말라
-// 
+//
 	uint8_t TSTAT;
-	
+
 	TSTAT = FPGA_READ_WORD(RS422_TX_STATE_ADDR);
 
 	if(TSTAT&0x80) // TX END
 	{
 		FPGA_WR_RS422_TX_FLAG_CLEAR;
-				
+
 		pTxMem[0] = STATE_REQUEST_CMD;
 		pTxMem[1] = 0x0000000B;
 
@@ -271,14 +271,14 @@ int rs422_PacketParse_Slave()
 
 	uint32_t packetID;
 	uint32_t slvid_addr;
-	
+
 	static int net_disable = 0;
 
 	uint32_t packetCode;
 
 	uint32_t rs422_CMD;
-	LCAS_PACKET Packet;	
-	LCAS_PACKET* pPacket;	
+	LCAS_PACKET Packet;
+	LCAS_PACKET* pPacket;
 
 	static char rs422Data_in[256];
 
@@ -315,7 +315,7 @@ int rs422_PacketParse_Slave()
 				PacketParse(pPacket->nPacketCode, rs422Data_in);
 
 				break;
-			case STATE_REQUEST_CMD:		
+			case STATE_REQUEST_CMD:
 				// 마스터에서 주기적으로 요청한다.
 				// 요청에 대한 응답은 FPGA에서 자동으로 버퍼에 저장된 데이터를 보낸다.
 				// 여기에서 특별히 할일은 없다.
@@ -452,15 +452,15 @@ iprintf("<<<nPacketCode = %x>>>\n",nPacketCode);
 			net_Command(pData);
 			break;
 		case PACKCODE_LCAS_STATE:
-#if 0			
+#if 0
 			// 데이터 요청일 경우만 응답 한다.
 			if(IS_REQUEST_PACKET(pData)) {
 				SEND_RESPONSE_LCAS_PACKET(LcasState,pData);
 			}
-#endif			
+#endif
 			break;
 		case PACKCODE_LCAS_SLFEMSG:
-#if 0			
+#if 0
 			if(IS_REQUEST_PACKET(pData)) {}
 			else if(IS_ACK_PACKET(pData)){	// 1초내 응답이 없을 경우 다시 전송
 				}
@@ -496,7 +496,7 @@ iprintf("<<<nPacketCode = %x>>>\n",nPacketCode);
 						break;
 				}
 			}
-#endif			
+#endif
 			break;
 		case PACKCODE_LCAS_ADJUST_DATA:
 			if(IS_REQUEST_PACKET(pData)) {
@@ -858,7 +858,6 @@ int r_peek(char* pBuffer, int size)
 
 //	if (tx.Head == tx.Tail)
 //		return 0;
-
 
 	if (tx.Head + size > r_get_buffer_size()) {
 		int copy = r_get_buffer_size() - tx.Head;
