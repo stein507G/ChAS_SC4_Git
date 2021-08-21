@@ -1,0 +1,953 @@
+/*
+ * rs422_if.c
+ */
+
+#include "config.h"
+
+#include "rs422_if.h"
+#include "net_AS.h"
+#include "LcasAction_task.h"
+
+uint32_t * pTxMem = (uint32_t *)(0x50008000);	// 0x2000 (32bit) -- 0010 0000 0000 0000 << 2  --> 1000 0000 0000 0000 (0x8000) --> 0x50008000
+uint32_t * pRxMem = (uint32_t *)(0x50009000);	// 0x2400 (32bit) -- 0010 0100 0000 0000 << 2  --> 1001 0000 0000 0000 (0x9000) --> 0x50009000
+
+uint8_t * pTxMem_byte = (uint8_t *)(0x50008000);	// 0x2000 (32bit) -- 0010 0000 0000 0000 << 2  --> 1000 0000 0000 0000 (0x8000) --> 0x50008000
+uint8_t * pRxMem_byte = (uint8_t *)(0x50009000);	// 0x2400 (32bit) -- 0010 0100 0000 0000 << 2  --> 1001 0000 0000 0000 (0x9000) --> 0x50009000
+
+uint32_t * rTxMem = (uint32_t *)(0x50008004);				// 0x2001(32bit) -- 0010 0000 0000 0001<< 2  --> 1000 0000 0000 0100 (0x8000) --> 0x50008004
+uint8_t * r_pTxMem_byte = (uint8_t *)(0x50008004);	// 0x2001(32bit) -- 0010 0000 0000 0001<< 2  --> 1000 0000 0000 0100 (0x8000) --> 0x50008004
+
+
+
+//static int totalCntI=0;	
+//static int totalCntD=0;			
+
+//#define APC_RS422_PACKET_FUNCTION_COUNT		(rs422_MAX_PACKET_NO + 1)
+//void (*pfAPC_Rs422_Packet[APC_RS422_PACKET_FUNCTION_COUNT])(uint32_t slvid_addr);
+
+RS422_ST rs422if;
+
+RS422_BUF tx;
+
+
+
+
+#if RS422_MY_ID	== RS422_ID_AS
+
+char selfMsgBufHeader[24];
+LCAS_SELFMSG_t rs422_selfMsgBuf[8];
+char stateBufHeader[24];
+//LCAS_STATE_t rs422_stateBuf[8]; // - 보낼 수 있을 때 그때 데이터를 보낸다.
+char diagDataBufHeader[24];
+LCAS_DIAG_DATA_t rs422_diagDataBuf[8];
+
+char responseDataBufHeader[4][24];
+char rs422_responseDataBuf[4][256];
+
+
+
+#elif RS422_MY_ID	== RS422_ID_OVEN
+	YL9030_OVEN_SELFMSG rs422_selfMsgBuf[8];
+	YL9030_OVEN_STATE rs422_stateBuf[8];
+	YL9030_OVEN_DIAGDATA rs422_diagDataBuf[8];
+
+//YL9030_OVEN_SVCDATA
+#elif RS422_MY_ID	== RS422_ID_UVD
+	YL9020_UVD_SELFMSG rs422_selfMsgBuf[8];
+	YL9020_UVD_STATE rs422_stateBuf[8];
+	YL9020_UVD_DIAGDATA rs422_diagDataBuf[8];
+	YL9020_UVD_SCANDATA rs422_scanDataBuf[8];
+	char scanDataBufHeader[24];
+	YL9020_UVD_ACQDATA rs422_acqDataBuf[4];
+	char acqDataBufHeader[24];
+
+#endif
+
+
+
+
+
+extern LCAS_CONTROL_t LcasCon;//,tmpLcasCon;
+extern LCAS_DEV_STATE_t devState;
+extern LCAS_DEV_SET_t devSet;
+
+
+extern SYSTEM_INFORM_t sysInform;
+extern SYSTEM_CONFIG_t sysConfig;
+extern LCAS_RUN_SETUP_t runSetup;
+extern LCAS_TIME_EVENT_t timeEvent;
+extern LCAS_MIX_t mixSet;
+//LCAS_MIX_TABLE_t mixTable[MIX_TABLE_COUNT];
+extern LCAS_SEQUENCE_t sequence;
+extern LCAS_COMMAND_t command;
+extern LCAS_SELFMSG_t selfMsg;
+
+extern LCAS_SERVICE_t service;
+extern LCAS_STATE_t LcasState;
+
+extern LCAS_DIAG_DATA_t diagData;
+extern LCAS_USED_TIME_t usedTime;
+extern LCAS_TEMP_CAL_t tempCalData;
+extern LCAS_SPECIAL_t special;
+
+extern ETHERNET_CONFIG_t ethernetConfig;
+
+extern char pPacketBuff[TCP_SEND_PACKET_BUFF_SIZE];
+
+
+
+
+// ===========================================================================
+// ===========================================================================
+void rs422_SetMyBoardId(uint8_t Id)
+{
+	FPGA_WRITE_WORD(RS422_MY_ID_ADDR,Id); // Use 4bit
+}
+
+void InterruptEnable_rs422(void)
+{
+// RS422 Rx intr
+	NVIC_EnableIRQ( FabricIrq0_IRQn );
+	NVIC_ClearPendingIRQ( FabricIrq0_IRQn );
+
+// rs422 Auto Completion interrupt enable ----------
+	NVIC_EnableIRQ( FabricIrq3_IRQn );
+	NVIC_ClearPendingIRQ( FabricIrq3_IRQn );
+}
+
+void rs422_init(void)
+{
+	uint8_t i=0,j=0;
+	
+	rs422if.RunMode = RS422_RUN_CPUMODE;
+	rs422if.State = RS422_STATE_RUN;
+	rs422if.RxAllAllow = 0;
+	
+	rs422if.TSTAT = 1;	// 처음엔 완료로 셋팅
+
+	tx.Head = 0;
+	tx.Tail = 0;
+	
+
+
+}
+
+
+
+#if RS422_MASTER
+int rs422_PacketParse_Master()
+{
+	uint8_t RSTAT;
+	uint32_t rxinfo;
+	uint8_t rxid;
+	uint8_t slvid;
+	uint8_t rxlen;
+	uint8_t rxcmd;
+
+	uint32_t packetID = 0;
+	uint32_t slvid_addr;
+
+	RSTAT = FPGA_READ_WORD(RS422_RX_STATE_ADDR);
+//dp("s--\n");
+	if(RSTAT&0x80)
+	{
+		FPGA_WR_RS422_RX_FLAG_CLEAR;
+		rxinfo = FPGA_READ_WORD(RS422_RX_INFO_ADDR);
+		rxid  = rxinfo; rxinfo = rxinfo>>8;
+		rxlen = rxinfo; rxinfo = rxinfo>>8;
+		rxcmd = rxinfo;
+		slvid = rxid&0xF;
+		rs422if.rx_slvid = rxid&0xF;
+
+//dp("[RX]ID:%02X,LEN:%02X,CMD:%02X,RSTAT:%02X,D[0]:%08lX\r\n",rxid,rxlen,rxcmd,RSTAT, FPGA_READ_WORD(0x2401 + (APC_CONFIG_STASUS_SIZE*(slvid-1))));				
+
+		if(rxcmd == AUTO_MODE_CMD) {
+		dp("return  AUTO_MODE_CMD\n");
+			return;
+		}
+
+		slvid_addr = (rs422if.rx_slvid-1)<<RS422_CONFIG_STASUS_SIZE_SHIFT;
+		packetID = FPGA_READ_WORD(0x2401 + slvid_addr);
+
+//dp("slvid = %x  packetID=%x rxLen=%d\n",slvid,packetID,rxlen);
+//ShowMemoryWord((pRxMem + (APC_CONFIG_STASUS_SIZE*(slvid-1))), rxlen);
+
+		if(packetID > rs422_MAX_PACKET_NO) return RE_ERR;
+		
+		pfAPC_Rs422_Packet[packetID](slvid_addr);
+//		pfAPC_Rs422_Packet[packetID](apcif.rx_slvid);
+
+	}
+
+	return RE_OK;
+}
+
+int rs422_REQUEST_Send(uint32_t slvid)
+{
+
+// APC에서는 FPGA에 주기적으로 쓴다.
+// 상태값을 요청하고 , FPGA에서 자동으로 읽어 들인다.	
+// GLOBAL ID로 설정하지 말라
+// 
+	uint8_t TSTAT;
+	
+	TSTAT = FPGA_READ_WORD(RS422_TX_STATE_ADDR);
+
+	if(TSTAT&0x80) // TX END
+	{
+		FPGA_WR_RS422_TX_FLAG_CLEAR;
+				
+		pTxMem[0] = STATE_REQUEST_CMD;
+		pTxMem[1] = 0x0000000B;
+
+		FPGA_WR_RS422_TX_LENGTH(2); 	// tx_len
+
+		// APC_RUN_AUTOMODE 는 너무 많이 기다려서 하나씩 요청한다.
+//apc_APCCPUModeSetting();	// 없어도 Default CPU Mode
+		FPGA_WR_RS422_MODE_CPU;
+
+		FPGA_WR_RS422_SEND_TRIG(slvid); // tx_start - RS422_ID_GLOBAL 은 응답없음
+
+		return RE_OK;
+	}
+	else {
+		// 현재 보낼 수 없는 상태일 경우는 무시하고 요청하지 않음.
+		// 다른 명영이 실행 되고 있는 상태이므로 한 번 빠져도 된다....
+		return RE_ERR;
+	}
+
+}
+
+int rs422_SendCmd()	// Master --> Slave
+{
+
+
+
+}
+
+#else
+
+// My_ID 이거나 Global_ID
+int rs422_PacketParse_Slave()
+{
+	uint8_t RSTAT;
+	uint32_t rxinfo;
+	uint8_t rxid;
+//	uint8_t slvid;
+	uint8_t rxlen;
+	uint8_t rxcmd;
+
+	uint32_t packetID;
+	uint32_t slvid_addr;
+	
+	static int net_disable = 0;
+
+	uint32_t packetCode;
+
+	uint32_t rs422_CMD;
+	LCAS_PACKET* pPacket;	
+
+	static char rs422Data_in[256];
+
+	RSTAT = FPGA_READ_WORD(RS422_RX_STATE_ADDR);
+
+
+//	if(RSTAT != apcif.RSTAT) {
+//		apcif.RSTAT = RSTAT;
+//	}
+
+	if(RSTAT&0x80)
+	{
+		FPGA_WR_RS422_RX_FLAG_CLEAR;
+		rxinfo = FPGA_READ_WORD(RS422_RX_INFO_ADDR);
+		rxid  = rxinfo; rxinfo = rxinfo>>8;
+		rxlen = rxinfo; rxinfo = rxinfo>>8;
+		rxcmd = rxinfo;
+//		slvid = rxid&0xF;
+
+		rs422_CMD = FPGA_READ_WORD(RS422_RX_CMD_ADDR);
+
+		switch(rs422_CMD) {
+
+			case RS422_CMD_PACKET_SEND:
+				// Master에서 전송한 데이터를 받은 경우
+
+//				rs422if.rx_slvid = rxid&0xF;
+//				slvid_addr = 0;
+//				packetID = FPGA_READ_WORD(0x2401);
+//				if(packetID > rs422_MAX_PACKET_NO) return RE_ERR;
+//				pfAPC_Rs422_Packet[packetID](0);
+				//dp("[RX]ID:%02X,LEN:%02X,CMD:%02X,RSTAT:%02X,D[0]:%08lX\r\n",rxid,rxlen,rxcmd,RSTAT, packetID);
+				//		ShowMemoryWord(pRxMem, rxlen);
+
+				memcpy(pPacket, (uint8_t *)(pRxMem + 1), sizeof(LCAS_PACKET));			// Packet Header
+//				memcpy(rs422Data_in, (uint8_t *)(pRxMem + 7), ((rxlen - 7) << 2));		// Packet Data
+				memcpy(rs422Data_in, (uint8_t *)(pRxMem + 1), ((rxlen - 1) << 2));			// Packet Data
+
+				rs422_PacketParse(pPacket->nPacketCode, rs422Data_in);
+				break;
+			case STATE_REQUEST_CMD:		
+				// 마스터에서 주기적으로 요청한다.
+				// 요청에 대한 응답은 FPGA에서 자동으로 버퍼에 저장된 데이터를 보낸다.
+				// 여기에서 특별히 할일은 없다.
+				break;
+		}
+
+// RS422이 활성화 되면 Ethernet 통신을 막는다.
+		if(net_disable == NO) {
+			rs422if.connected = YES;
+			NVIC_DisableIRQ(EthernetMAC_IRQn); /*MSS_MAC_disable_intr();*/ /* (+) 210621 CJKIM, disable mac interrupt before sending. */
+			net_disable = YES;
+		}
+
+	}
+
+	return RE_OK;
+
+}
+
+#endif
+
+
+
+
+#if 0
+
+void SEND_ACK_LCAS_PACKET(char *pReqHeader)
+{
+//#define ACK_LCAS_PACKET(ReqHeader)	{ 
+		char *buffer = pPacketBuff; 
+		((LCAS_PACKET *)buffer)->nPacketLength = sizeof(LCAS_PACKET); 
+		((LCAS_PACKET *)buffer)->nDeviceID = (PACKET_DEVICE_ID_YLAS); 
+		((LCAS_PACKET *)buffer)->nPacketCode = ((LCAS_PACKET*)ReqHeader)->nPacketCode; 
+		((LCAS_PACKET *)buffer)->nEventIndex = ((LCAS_PACKET*)ReqHeader)->nEventIndex; 
+		((LCAS_PACKET *)buffer)->nSlotOffset = ((LCAS_PACKET*)ReqHeader)->nSlotOffset; 
+		((LCAS_PACKET *)buffer)->nSlotSize = 0; 
+
+
+		if(tcpip) {
+			TCP_WRITE_PACKET; 
+		}
+		else {
+//			RS422_SEND_RESPONSE_LCAS_PACKET
+			RS422_ENQUEUE_PACKET; 
+		}
+}
+	
+#define SEND_ACK_LCAS_PACKET(ReqHeader)	{ \
+		ACK_LCAS_PACKET(ReqHeader); \
+		TCP_WRITE_PACKET; \
+	}
+
+
+}
+#endif
+
+
+int rs422_PacketParse(unsigned int nPacketCode, char *pData)
+{
+	int i;
+
+#if 0
+//=======================================================================
+// 처음으로 연결 - 정당한 연결인지 확인한다,
+//=======================================================================
+	if( rs422if.connected == NO) {
+		switch(nPacketCode) {
+			case PACKCODE_LCAS_SYSTEM_INFORM:
+				if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+					SEND_RESPONSE_LCAS_PACKET(sysInform,pData);
+				}
+				else if(IS_ACK_PACKET(pData)){
+	dfp("ack--PACKCODE_LCAS_SYSTEM_INFORM\n");
+				}
+				else {
+	dfp("rcv--PACKCODE_LCAS_SYSTEM_INFORM\n");
+	// 에러일 경우는 tcp_close()
+					return net_CheckModel(pData);
+				}
+				break;
+			default:
+				return RE_ERR;
+		}
+	}
+#endif
+
+//=======================================================================
+//dfp("<<<nPacketCode = %x>>>\n",nPacketCode);
+
+//	IS_REQUEST_PACKET(pData) ? "Req" : IS_ACK_PACKET(pData) ? "Ack" : "Rcv");
+
+#if 1
+	switch(nPacketCode)
+	{
+		case PACKCODE_LCAS_SYSTEM_INFORM:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(sysInform,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else {
+				net_SystemInform(pData);
+			}
+			break;
+
+		case PACKCODE_LCAS_ETHERNET_CONFIG:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(ethernetConfig,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else {
+				net_EthernetConfig(pData);
+			}
+			break;
+
+		case PACKCODE_LCAS_SYSTEM_CONFIG:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(sysConfig,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else {
+				net_SystemConfig(pData);
+			}
+			break;
+		case PACKCODE_LCAS_RUN_SETUP:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(runSetup,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){			}
+			else net_runSetup(pData);
+			break;
+		case PACKCODE_LCAS_TIME_EVENT:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(timeEvent,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){			}
+			else net_TimeEvent(pData);
+			break;
+		case PACKCODE_LCAS_MIX_SETUP:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(mixSet,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else net_MixSetup(pData);
+			break;
+//		case PACKCODE_LCAS_MIX_TABLE:
+//			break;
+		case PACKCODE_LCAS_SEQUENCE:
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청
+				RS422_SEND_RESPONSE_LCAS_PACKET(sequence,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else net_Sequence(pData);
+			break;
+		case PACKCODE_LCAS_COMMAND:
+/*
+			if(IS_REQUEST_PACKET(pData)) {	// 데이터 요청 - 등어올 일이 없네
+				SEND_RESPONSE_LCAS_PACKET(command,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){}
+			else
+*/
+			net_Command(pData);
+			break;
+		case PACKCODE_LCAS_STATE:
+#if 0			
+			// 데이터 요청일 경우만 응답 한다.
+			if(IS_REQUEST_PACKET(pData)) {
+				SEND_RESPONSE_LCAS_PACKET(LcasState,pData);
+			}
+#endif			
+			break;
+		case PACKCODE_LCAS_SLFEMSG:
+#if 0			
+			if(IS_REQUEST_PACKET(pData)) {}
+			else if(IS_ACK_PACKET(pData)){	// 1초내 응답이 없을 경우 다시 전송
+				}
+			else {
+				USE_LCAS_PACKET(pData, selfMsg);
+				switch(selfMsg.ucMessage) {
+					case SELF_STATE:
+					case SELF_ERROR:
+						break;
+					case SELF_EXTOUT: 				break;
+					case SELF_START_INJECTION:			break;
+					case SELF_STOP: 				break;
+					case SELF_END_SEQUENCE: //			9 	// 시퀀스 동작 수행 완료
+						break;
+					case SELF_USER_RESPONSE:	//		10	// Missing Vial 사용자 선택에 대한 응답
+	dfp("========================missing %d \n",devState.missVialResponse);
+						switch(selfMsg.ucNewValue) {
+							case MISSING_VIAL_NO_RESPONSE:
+								devState.missVialResponse = MISSING_VIAL_NO_RESPONSE;
+								break;
+							case MISSING_VIAL_SKIP:
+								devState.missVialResponse = MISSING_VIAL_SKIP;
+								break;
+							case MISSING_VIAL_RETRY:
+								devState.missVialResponse = MISSING_VIAL_RETRY;
+								break;
+							case MISSING_VIAL_STOP:
+								devState.missVialResponse = MISSING_VIAL_ABORT;
+								commandStopFn();	// COMMAND_STOP가 똑같은 동작 실행
+								break;
+						}
+	dfp("========================missing %d \n",devState.missVialResponse);
+						break;
+				}
+			}
+#endif			
+			break;
+		case PACKCODE_LCAS_ADJUST_DATA:
+			if(IS_REQUEST_PACKET(pData)) {
+				RS422_SEND_RESPONSE_LCAS_PACKET(devSet.adjust,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){}
+			else {
+				send_SelfMessage(SELF_COMMAND_REJECT,0);
+			}
+			break;
+		case PACKCODE_LCAS_SERVICE:
+	dp("devState.actionMenu=%d\n",devState.actionMenu);
+//			if(devState.actionMenu == AS_ACTION_READY || devState.actionMenu == AS_ACTION_ADJUST || devState.actionMenu == AS_ACTION_DIAGNOSTICS) {
+			if(devState.actionMenu == AS_ACTION_READY || devState.actionMenu == AS_ACTION_ADJUST || devState.actionMenu == AS_ACTION_DIAGNOSTICS || devState.actionMenu == AS_ACTION_FAULT) {
+				USE_LCAS_PACKET(pData, service);
+	dp("PACKCODE_LCAS_SERVICE cmd=%d sub1=%d sub2=%d\n",service.command, service.subCommand1, service.subCommand2);
+				switch(service.command) {
+					case SERVICE_ADJUST:
+						net_ServiceAdjust();
+						break;
+					case SERVICE_DIAGNOSTICS:
+						net_ServiceDiagnostics(pData);
+						break;
+					case SERVICE_TEMP_CALIBRATION:
+//						SEND_ACK_LCAS_PACKET(pData);
+						net_ServiceTempCal(pData);
+						break;
+					case SERVICE_SYRINGE_REPLACE:
+						RS422_SEND_ACK_LCAS_PACKET(pData);
+						net_ServiceSyringeReplace();
+						break;
+					case SERVICE_NEEDLE_REPLACE:
+						RS422_SEND_ACK_LCAS_PACKET(pData);
+						net_ServiceNeedleReplace();
+						break;
+					case SERVICE_WASH_WASTE:
+						RS422_SEND_ACK_LCAS_PACKET(pData);
+						net_ServiceWashWaste();
+						break;
+					case SERVICE_USED_TIME:
+							net_ServiceUsedTime(pData);
+						break;
+					case SERVICE_MAC_INIT:
+						break;
+					case SERVICE_MIRO_PUMP_ON_OFF:
+						switch(service.subCommand1) {
+							case MIRO_PUMP_CMD_ON:
+//								unsigned char microPumpPwmCount;
+//								microPumpPwmCount = devSet.adjustTmp.microPumpVolt * MICRO_PUMP_UNIT_PWM + MICRO_PUMP_PWM_MIN;
+//								PumpConOn(microPumpPwmCount);
+								PumpConOn(devSet.adjustTmp.microPumpVolt * MICRO_PUMP_UNIT_PWM + MICRO_PUMP_PWM_MIN);
+								break;
+							case MIRO_PUMP_CMD_OFF:
+								PumpConOff();
+								break;
+						}
+						break;
+
+					default:
+	// 여기에 도달하면 에러 - 알수 없는 파라미터 // 오류 전송할 것.	// selfMessage
+						errorFunction(SELF_ERROR_COMMAND_UNKNOWN);
+						break;
+				}
+			}
+			else {
+				// 서비스모드 실행 불가능 상태임.
+				send_SelfMessage(SELF_COMMAND_REJECT,0);
+			}
+			break;
+		case PACKCODE_LCAS_USED_TIME:
+			// 데이터 요청일 경우만 응답 한다.
+			if(IS_REQUEST_PACKET(pData)) {
+				RS422_SEND_RESPONSE_LCAS_PACKET(usedTime,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){
+			}
+			else {
+// service 명령으로 변경하라.
+//				send_SelfMessage(SELF_COMMAND_REJECT,0);
+				net_UsedTime(pData);
+			}
+			break;
+
+		case PACKCODE_LCAS_DIAG_DATA:
+			// 데이터 요청일 경우만 응답 한다.
+			if(IS_REQUEST_PACKET(pData)) {
+				RS422_SEND_RESPONSE_LCAS_PACKET(diagData,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){}
+			else {
+// service 명령으로 변경하라.
+				send_SelfMessage(SELF_COMMAND_REJECT,0);
+dlp("reject -- \n");
+			}
+			break;
+		case PACKCODE_LCAS_SPECIAL:
+			if(IS_REQUEST_PACKET(pData)) {
+				RS422_SEND_RESPONSE_LCAS_PACKET(special,pData);
+			}
+			else if(IS_ACK_PACKET(pData)){}
+			else {
+				net_Special(pData);
+			}
+			break;
+
+
+
+
+
+
+	return RE_OK;
+	}
+#endif
+}
+
+
+#if 1
+int rs422_SendData()
+{
+	uint8_t TSTAT;
+	uint8_t packetInfo;
+
+	LCAS_PACKET* pPacket;	
+
+//	char pBuffer[RS422_TX_DATA_BUF_SIZE];
+	char pBuffer[PACKET_HEADER_SIZE];
+
+	int data_cnt;
+	int ret;
+	
+	if(tx.Head == tx.Tail) {
+		return 0;
+	}
+	else {
+		TSTAT = FPGA_READ_WORD(RS422_TX_STATE_ADDR);
+		if(TSTAT&0x80) {
+			data_cnt = r_get_available(&tx);
+
+			if (data_cnt >= PACKET_HEADER_SIZE) {
+				ret = r_peek(pBuffer,  PACKET_HEADER_SIZE, &tx);
+				pPacket = (LCAS_PACKET*)(pBuffer);
+
+				if(data_cnt >= pPacket->nPacketLength) {
+
+					pTxMem[0] = STATE_REQUEST_CMD;			// FPGA에서 자동으로 결정된다. (0xB0)
+
+//					memcpy((uint8_t *)(pTxMem+1), pBuffer, pPacket->nPacketLength); 	// Packet Header
+//					ret = r_dequeue(pBuffer,	pPacket->nPacketLength, &tx);
+//					ret = r_txbuf(pBuffer,	pPacket->nPacketLength, &tx);
+					ret = r_save_TxMem(pPacket->nPacketLength, &tx);
+
+					FPGA_WR_RS422_TX_LENGTH(pPacket->nPacketLength >> 2 + 1);
+//					6 + (sizeof(YL9020_UVD_SCANDATA) >> 2) + 2);	// tx_len : uint8_t --> uint32_t ,	Head , Tail
+					FPGA_WR_RS422_TX_DATA_SAVED;			// 보낼데이터가 저장되었다. - Master에서 요청시 전송된다.
+
+//					rs422if.TSTAT = 1;
+				}
+			}
+		}
+	}
+
+}
+#endif
+
+	
+
+
+#if 0	
+
+
+//================================================================================
+//================================================================================
+// This function may be called every 1 MS
+void apc_process(void)
+{
+	if(apcif.State == APC_STATE_RUN)
+	{
+		if(GCC_MASTER == gcsvc.MasterSlave)
+		{
+			if(apcif.RunMode == APC_RUN_AUTOMODE)
+			{
+				if(apcif.AutoEnd == 1)
+				{
+//					apc_APCMainStatusUpdate();
+					apcif.AutoEnd = 0;
+					apc_CheckAutoResult();
+apc_APCCPUModeSetting();
+				}
+			}
+			else
+			{
+				apc_CheckRxState();
+			}
+		}
+		else
+		{
+			apc_CheckRxState();
+		}
+
+		apc_CheckTxState();
+
+	}
+
+}
+
+void apc_APCSendStaus(uint8_t dest_addr)
+{
+	apc_APCSend(dest_addr,APC_CONFIG_STASUS_SIZE,APC_CMD_CON_STATUS,apcif.MainStatus);
+}
+
+void apc_APCSendStausAuto(void)
+{
+	apcif.slvch++;
+	if(apcif.slvch >= APC_SLAVE_NUMBER) apcif.slvch=0;
+	apc_APCSendStaus(apcif.slvch+1);
+}
+
+void apc_APCSendConfig(uint8_t dest_addr)
+{
+	uint8_t CmdRespCode=0;
+	uint8_t DestinationAddr=0;
+
+	if(GCC_MASTER == gcsvc.MasterSlave) // Configuration Set Command
+	{
+		if((dest_addr == 0)||(dest_addr > 9)) return;
+
+		if(dest_addr < 4)  		CmdRespCode =	rs422_APC_CMD_INLET_CONFIG;
+		else if(dest_addr == 4)  CmdRespCode =	rs422_APC_CMD_DET_CONFIG_1;
+		else if(dest_addr == 5) CmdRespCode =	rs422_APC_CMD_AUX_SETTING_1;
+
+		DestinationAddr = dest_addr;
+//		apc_APCSend(DestinationAddr,APC_CONFIG_STASUS_SIZE,CmdRespCode, apcif.Config[DestinationAddr-1]);
+		apc_APCSend(DestinationAddr,63,CmdRespCode, apcif.Config[DestinationAddr-1]);
+		
+	}
+	else // Configuration Response
+	{
+		if(gcsvc.ApcMyId < 4)  		CmdRespCode =	rs422_APC_CMD_INLET_CONFIG;
+		else if(gcsvc.ApcMyId == 4)  CmdRespCode =	rs422_APC_CMD_DET_CONFIG_1;
+		else if(gcsvc.ApcMyId == 5) CmdRespCode =	rs422_APC_CMD_AUX_SETTING_1;
+ 
+//apc_APCSend(0xE,APC_CONFIG_STASUS_SIZE,CmdRespCode, apcif.Config[gcsvc.ApcMyId]);
+apc_APCSend(0xE,63                   ,CmdRespCode, apcif.Config[gcsvc.ApcMyId - 1]);
+
+	}
+}
+
+// this function is available in Slave mode
+void apc_APCConfigSendBack(void)
+{
+	uint8_t CmdRespCode=0;
+	uint8_t i;
+	uint8_t dest_addr = 0xE;
+
+	if(GCC_SLAVE == gcsvc.MasterSlave)
+	{
+		if(gcsvc.ApcMyId < 4)  		CmdRespCode =	APC_CMD_INLET_SET;
+		else if(gcsvc.ApcMyId < 7)  CmdRespCode =	APC_CMD_DET_SET;
+		else if(gcsvc.ApcMyId < 10) CmdRespCode =	APC_CMD_AUX_SET;
+
+		pTxMem[0] = CmdRespCode;
+
+		for(i=0;i<APC_CONFIG_STASUS_SIZE;i++)
+			pTxMem[1+i] =  pRxMem[1+i];
+		FPGA_WR_RS422_TX_LENGTH(APC_CONFIG_STASUS_SIZE+1); 	// tx_len
+		FPGA_WR_RS422_SEND_TRIG(dest_addr);// tx_start
+	}
+}
+
+// AUTO Mode 일 경우는 CMD는 0xC0가 되어야 한다.
+void apc_APCMainStatusUpdate(void)
+{
+	uint8_t i;
+	uint32_t tdata;
+	apcif.TST_patternA++;
+
+#if 0
+	if(apcif.TST_patternA&0x01)
+		tdata = 0x1234;
+	else
+		tdata = 0x5678;
+
+	// 1. define control word
+//	pTxMem[0] = APC_CMD_CON_STATUS;
+	pTxMem[0] = AUTO_MODE_CMD;
+	
+	// 2. define information
+	for(i=0;i<APC_CONFIG_STASUS_SIZE;i++)
+	{
+		pTxMem[i+1] = tdata;
+	}
+	// 3. define length = control(1) + information(APC_CONFIG_STASUS_SIZE)
+	FPGA_WR_RS422_TX_LENGTH(APC_CONFIG_STASUS_SIZE+1); 	// tx_len
+#else
+//	pTxMem[0] = APC_CMD_CON_STATUS;		
+		pTxMem[0] = AUTO_MODE_CMD;		
+
+	memcpy((uint8_t *)(pTxMem+1),&RS422_Main_State,sizeof(RS422_Main_State));
+	
+	FPGA_WR_RS422_TX_LENGTH((sizeof(RS422_Main_State) >> 2) + 1 + 1); 	// tx_len : uint8_t --> uint32_t , 
+#endif	
+}
+
+void apc_APCSlaveStatusUpdate(void)
+{
+	uint8_t i;
+	uint32_t tdata;
+	apcif.TST_patternA++;
+
+	if(apcif.TST_patternA&0x01)
+		tdata = 0xABCDE;
+	else
+		tdata = 0xEF012;
+
+	// 1. define control word
+	pTxMem[0] = APC_CMD_CON_STATUS;
+
+	// 2. define information
+	for(i=0;i<APC_CONFIG_STASUS_SIZE;i++)
+	{
+		pTxMem[i+1] = tdata;
+	}
+
+	// 3. define length = control(1) + information(APC_CONFIG_STASUS_SIZE)
+	FPGA_WR_RS422_TX_LENGTH(APC_CONFIG_STASUS_SIZE+1); 	// tx_len
+}
+
+
+#endif
+
+
+void rs422_CPUModeSetting(void)
+{
+	FPGA_WR_RS422_MODE_CPU;
+	rs422if.RunMode = RS422_RUN_CPUMODE;
+}
+
+
+
+int r_get_buffer_size()
+{
+	int ret = 0;
+
+	ret = RS422_TX_DATA_BUF_SIZE;
+
+	return ret;
+}
+
+int r_get_available(RS422_BUF *bf)
+{
+	int ret = 0;
+
+	ret = (bf->Head <= bf->Tail )? bf->Tail - bf->Head : r_get_buffer_size() + bf->Tail - bf->Head;
+	
+	return ret;
+}
+
+int r_enqueue(const char* pBuffer, int size, RS422_BUF *bf)
+{
+	int ret = 0;
+	int buf_size;
+
+//	MSS_MAC_disable_intr();
+
+	buf_size = r_get_buffer_size();
+
+	if (bf->Tail + size >= buf_size) {
+		int copySize = buf_size - bf->Tail;
+		memcpy(&bf->Data[bf->Tail], &pBuffer[0], copySize);
+		memcpy(bf->Data, &pBuffer[copySize], size - copySize);
+	}
+	else {
+
+		memcpy(&bf->Data[bf->Tail], &pBuffer[0], size);
+	}
+
+	bf->Tail = (bf->Tail + size) % buf_size;
+
+	ret = bf->Head <= bf->Tail ? bf->Tail - bf->Head : buf_size + bf->Tail - bf->Head;
+
+//	MSS_MAC_enable_intr();
+
+	return ret;
+}
+
+
+//int r_dequeue(int size, RS422_BUF *bf)
+int r_save_TxMem(int size, RS422_BUF *bf)
+{
+	int ret = 0;
+	int buf_size;
+
+//	MSS_MAC_disable_intr();
+
+//	if (g_tQueue.Head == g_tQueue.Tail)
+//		return 0;
+
+	buf_size = r_get_buffer_size();
+
+	if (bf->Head + size > buf_size) {
+		int copy = buf_size - bf->Head;
+
+//		memcpy(&pBuffer[0], (const void*)&bf->Data[bf->Head], copy);
+//		memcpy(&pBuffer[copy], (const void*)bf->Data, size - copy);
+
+//		memcpy((uint8_t *)(pTxMem+1), (const void*)&bf->Data[bf->Head], copy);
+		memcpy((uint8_t *)(pTxMem[1]), (const void*)&bf->Data[bf->Head], copy);
+		memcpy(&pTxMem_byte[copy + 1], (const void*)bf->Data, size - copy);
+	}
+	else {
+		//		memcpy(&pBuffer[0], (const void*)&bf->Data[bf->Head], size);
+		memcpy((uint8_t *)(pTxMem[1]), (const void*)&bf->Data[bf->Head], size);
+	}
+
+	bf->Head = (bf->Head + size) % buf_size;
+
+	ret = size;
+
+//	MSS_MAC_enable_intr();
+
+	return ret;
+}
+
+
+//int peek(char* pBuffer, int offset, int size)
+int r_peek(char* pBuffer, int size, RS422_BUF *bf)
+{
+	int ret = 0;
+
+//	if (bf->Head == bf->Tail)
+//		return 0;
+
+
+	if (bf->Head + size > r_get_buffer_size()) {
+		int copy = r_get_buffer_size() - bf->Head;
+
+		memcpy(&pBuffer[0], (const void*)&bf->Data[bf->Head], copy);
+		memcpy(&pBuffer[copy], (const void*)bf->Data, size - copy);
+	}
+	else {
+		memcpy(&pBuffer[0], (const void*)&bf->Data[bf->Head], size);
+	}
+
+	ret = size;
+
+	return ret;
+}
+
+
+
