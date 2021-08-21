@@ -40,10 +40,7 @@ uint8_t FrameReceived = 0;
 
 extern volatile int TimeEvent;
 
-volatile int TimeEvent_1ms = NO;		// pAction_Fn() µô·¹ÀÌ¸¦ ÁÖ±âÀ§ÇÑ...
-
-
-
+volatile int TimeEvent_1ms = NO;		// pAction_Fn() ï¿½ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½...
 
 
 
@@ -53,7 +50,7 @@ volatile int TimeEvent_1ms = NO;		// pAction_Fn() µô·¹ÀÌ¸¦ ÁÖ±âÀ§ÇÑ...
 #define TIME_10HZ_CNT			100
 #define TIME_WDT_RESET_CNT		20	// 10
 
-#define CNT_LWIP_PERIODIC_HANDLE			1		// Ã¹¹øÂ°
+#define CNT_LWIP_PERIODIC_HANDLE			1		// Ã¹ï¿½ï¿½Â°
 	#define CNT_LWIP_PERIODIC_CHK			5		// 20Hz
 #define CNT_READY_POW_BTN_BASE				2
 	#define CNT_CHECK_POW_BTN			20
@@ -89,12 +86,12 @@ uint32_t pwnControl = 0;
 uint32_t gbFabricRemoteInt = NO;
 //uint32_t FabricGpioIntCnt = 0;
 
-uint32_t remoteStartInCnt = 0;		// 100ms ´ÜÀ§
-uint32_t remoteStartInTime = 0;		// 100ms ´ÜÀ§
+uint32_t remoteStartInCnt = 0;		// 100ms ï¿½ï¿½ï¿½ï¿½
+uint32_t remoteStartInTime = 0;		// 100ms ï¿½ï¿½ï¿½ï¿½
 
-uint32_t remoteStartOutSig = NO;	// ¸®¸ðÆ® ´ÜÀÚ·Î Ãâ·ÂÇØ¾ß µÈ´Ù.
+uint32_t remoteStartOutSig = NO;	// ï¿½ï¿½ï¿½ï¿½Æ® ï¿½ï¿½ï¿½Ú·ï¿½ ï¿½ï¿½ï¿½ï¿½Ø¾ï¿½ ï¿½È´ï¿½.
 uint32_t remoteStartOutCnt = 0;
-uint32_t remoteStartOutTime = 1;		// 100ms ´ÜÀ§
+uint32_t remoteStartOutTime = 1;		// 100ms ï¿½ï¿½ï¿½ï¿½
 
 uint32_t gbRTC_Match = NO;
 
@@ -272,7 +269,7 @@ IntFanConOff();
 //	pTime_Event_Fn = time_Event_Blank;
 
 // =========================================================================================
-// ÃÊ±âÈ­ ÀÛ¾÷ : ADC ÃÊ±âÈ­ ÀÛ¾÷
+// ï¿½Ê±ï¿½È­ ï¿½Û¾ï¿½ : ADC ï¿½Ê±ï¿½È­ ï¿½Û¾ï¿½
 // -----------------------------------------------------------------------------------------
 	while(adcif.State != ADCST_RUN) {
 		if(TimeEvent)		// 1msec
@@ -285,7 +282,7 @@ IntFanConOff();
 	timeStateActCnt = 0;
 
 //=================================================================================
-// ÇÔ¼ö Æ÷ÀÎÅÍ ÃÊ±âÈ­
+// ï¿½Ô¼ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê±ï¿½È­
 //=================================================================================
 #if AUTO_TUNNING_CONTROL
 	pPID_Control_Fn = pidAutoTunningInit;
@@ -336,13 +333,13 @@ TimeEvent_1ms = YES;
 
 #if RS422_ENABLE
 #if RS422_MASTER
-// (rxv_intr_ext) RS422¼ö½Å ÀÎÅÍ·´Æ® ¹ß»ý		 -   My_ID ÀÌ°Å³ª Global_ID
+// (rxv_intr_ext) RS422ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Í·ï¿½Æ® ï¿½ß»ï¿½		 -   My_ID ï¿½Ì°Å³ï¿½ Global_ID
 			if(rs422if.rx_intr == 1) {
 				rs422if.rx_intr = 0;
 				if(devState.connected == NO) rs422_PacketParse_Master();
 			}
 #else
-			rs422_SendData();	// Slave --> Master    /** ¼ö½Åº¸´Ù ¾ÕÂÊ¿¡ À§Ä¡ÇÏ´Â °ÍÀÌ ...*/
+			rs422_SendData();	// Slave --> Master    /** ï¿½ï¿½ï¿½Åºï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ê¿ï¿½ ï¿½ï¿½Ä¡ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½ ...*/
 			if(rs422if.rx_intr == 1) {
 				rs422if.rx_intr = 0;
 				if(devState.connected == NO) rs422_PacketParse_Slave();
@@ -394,7 +391,7 @@ TimeEvent_1ms = YES;
 						devState.diagTimeCount++;				// LcasAction_task.c
 
 						if(devState.adReadValid) {
-							CheckDeviceState();		// Power Button °ü·Ã , Door , Magnetic switch , leak
+							CheckDeviceState();		// Power Button ï¿½ï¿½ï¿½ï¿½ , Door , Magnetic switch , leak
 						}
 					}
 					break;
@@ -415,9 +412,9 @@ TimeEvent_1ms = YES;
 						rs422TstatCheckCnt = 0;
 #if 0
 						if(rs422if.TSTAT == 0)
-						{	// Ã³À½¿£ ¿Ï·á·Î ¼ÂÆÃ
-							// ¼Û½Å¹öÆÛ°¡ ºñ¿öÁöÁö ¾Ê¾Æ¼­ º¸³»Áö ¸øÇÑ µ¥ÀÌÅÍ°¡ ÀÖ´Ù.
-							// SlaveÀÇ °æ¿ìÀÓ.
+						{	// Ã³ï¿½ï¿½ï¿½ï¿½ ï¿½Ï·ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+							// ï¿½Û½Å¹ï¿½ï¿½Û°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¾Æ¼ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Í°ï¿½ ï¿½Ö´ï¿½.
+							// Slaveï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½.
 						}
 #endif
 					}
@@ -425,12 +422,12 @@ TimeEvent_1ms = YES;
 				case CNT_WATCHDOG_RTC_BASE:
 					if(++wdg_reset_cnt >= CNT_WATCHDOG_RTC) {	// 1Hz
 						wdg_reset_cnt =0;
-						MSS_WD_reload();	// 1Sec ¸¶´Ù ½ÇÇàÇÒ °Í
+						MSS_WD_reload();	// 1Sec ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 
 						rtcRead_time(RTC_SECONDS_REG_ADDR,time);
 //						get_RtcTime();
 
-// ÀÎÅÍ·´Æ® ·çÆ¾¿¡¼­ µ¿ÀÛÇÏÁö ¾Êµµ·Ï - ¼Óµµ°¡ ´À·Á¼­ .... ¹®Á¦ ¹ß»ý
+// ï¿½ï¿½ï¿½Í·ï¿½Æ® ï¿½ï¿½Æ¾ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Êµï¿½ï¿½ï¿½ - ï¿½Óµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ .... ï¿½ï¿½ï¿½ï¿½ ï¿½ß»ï¿½
 					if(devState.save_EEPROM_sysConfig == YES) {
 						if(save_EEPROM_sysConfig_data()) {
 							devState.save_EEPROM_sysConfig = NO;
@@ -471,7 +468,7 @@ TimeEvent_1ms = YES;
 		pAction_Fn[devState.actionMenu](0);		// Action();
 
 //==========================================================================
-#if 0	// Å×½ºÆ® - ÅÍ¹Ì³Î ÀÔ·Â
+#if 0	// ï¿½×½ï¿½Æ® - ï¿½Í¹Ì³ï¿½ ï¿½Ô·ï¿½
 		if (((g_mss_uart0.hw_reg->LSR)&0x01) == 1 )
 		{
 			cmd = g_mss_uart0.hw_reg->RBR;
