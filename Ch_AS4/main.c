@@ -44,12 +44,6 @@ volatile int TimeEvent_1ms = NO;		// pAction_Fn() 딜레이를 주기위한...
 
 
 
-extern uint32_t * pTxMem;
-extern uint32_t * pRxMem;
-
-extern uint8_t * pTxMem_byte;
-extern uint8_t * pRxMem_byte;
-
 
 
 
@@ -503,6 +497,11 @@ TimeEvent_1ms = YES;
 
 }
 
+extern uint32_t * pTxMem;
+extern uint32_t * pRxMem;
+
+extern uint8_t * pTxMem_byte;
+extern uint8_t * pRxMem_byte;
 
 void testMain()
 {
