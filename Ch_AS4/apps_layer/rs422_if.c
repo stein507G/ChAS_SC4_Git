@@ -908,5 +908,3 @@ void rs422_Test()
 #endif
 
 
-
-
