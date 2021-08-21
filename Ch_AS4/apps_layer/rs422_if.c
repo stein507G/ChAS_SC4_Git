@@ -99,8 +99,6 @@ extern ETHERNET_CONFIG_t ethernetConfig;
 extern char pPacketBuff[TCP_SEND_PACKET_BUFF_SIZE];
 
 
-
-
 // ===========================================================================
 // ===========================================================================
 void rs422_SetMyBoardId(uint8_t Id)
