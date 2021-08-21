@@ -40,7 +40,7 @@ uint8_t FrameReceived = 0;
 
 extern volatile int TimeEvent;
 
-volatile int TimeEvent_1ms = NO;		// pAction_Fn() 딜레이를 주기위한... 
+volatile int TimeEvent_1ms = NO;		// pAction_Fn() 딜레이를 주기위한...
 
 
 
@@ -57,13 +57,13 @@ extern uint8_t * pRxMem_byte;
 #define TIME_50HZ_CNT			20				// 20msec
 #define TIME_20HZ_CNT			50				// 50msec
 #define TIME_10HZ_CNT			100
-#define TIME_WDT_RESET_CNT		20	// 10	
+#define TIME_WDT_RESET_CNT		20	// 10
 
 #define CNT_LWIP_PERIODIC_HANDLE			1		// 첫번째
 	#define CNT_LWIP_PERIODIC_CHK			5		// 20Hz
 #define CNT_READY_POW_BTN_BASE				2
 	#define CNT_CHECK_POW_BTN			20
-#define CNT_ADC_PROCESS								3						
+#define CNT_ADC_PROCESS								3
 //#define CNT_4													4
 #define CNT_SVCDATA_SEND_BASE					4
 	#define CNT_SVCDATA_SEND		100
@@ -79,24 +79,15 @@ extern uint8_t * pRxMem_byte;
 	#define CNT_WATCHDOG_RTC			100				// 100HZ / 100 = 1Hz
 #define CNT_RS422_TSTAT_CHECK_BASE		9
 	#define CNT_RS422_TSTAT_CHECK			5				// 100HZ / 5 = 20Hz
-#define CNT_RESET_10									10 
+#define CNT_RESET_10									10
 
 
 extern GCSVC_ST gcsvc;
 extern RS422_ST rs422if;
-//extern struct tcp_server_struct *g_es;
 extern ADC_ST adcif;
 
-//extern LCAS_STATE_t LcasState;
 extern LCAS_DEV_STATE_t devState;
-//extern LCAS_RUN_SETUP_t runSetup;
-//extern SYSTEM_CONFIG_t sysConfig;
-
-//extern SYSTEM_INFORM_t sysInform;
-//extern LCAS_USED_TIME_t usedTime;
 extern LCAS_DEV_SET_t devSet;
-//extern LCAS_SPECIAL_t special;
-//extern ETHERNET_CONFIG_t ethernetConfig;
 
 
 uint32_t pwnControl = 0;
@@ -108,7 +99,7 @@ uint32_t remoteStartInCnt = 0;		// 100ms 단위
 uint32_t remoteStartInTime = 0;		// 100ms 단위
 
 uint32_t remoteStartOutSig = NO;	// 리모트 단자로 출력해야 된다.
-uint32_t remoteStartOutCnt = 0;		
+uint32_t remoteStartOutCnt = 0;
 uint32_t remoteStartOutTime = 1;		// 100ms 단위
 
 uint32_t gbRTC_Match = NO;
@@ -127,18 +118,18 @@ int main()
 
 	uint32_t wdg_reset;
 	uint32_t wdg_reset_cnt=0;		// 1sec
-	uint32_t timeCnt10Hz = 0;	  
-	uint32_t timeCnt20Hz = 0;	
-	uint32_t timeCnt50Hz = 0;		
-	uint32_t timeCnt100Hz = 0;			
+	uint32_t timeCnt10Hz = 0;
+	uint32_t timeCnt20Hz = 0;
+	uint32_t timeCnt50Hz = 0;
+	uint32_t timeCnt100Hz = 0;
 	uint32_t eventTimeCnt = 0;
 
 	uint32_t cnt_LwIP_Periodic_Handle = 0;
 
 	uint32_t timeStateActCnt = 0;
 	uint32_t timeSataeSendCnt = 0;
-	uint32_t stateCheckCnt = 0;	
-	uint32_t rs422TstatCheckCnt = 0;	
+	uint32_t stateCheckCnt = 0;
+	uint32_t rs422TstatCheckCnt = 0;
 //	uint32_t sendSvcdataCnt = 0;
 	uint32_t usedTimeSaveCnt = 0;
 
@@ -150,11 +141,11 @@ int main()
 
 	uint8_t time[10];
 
-uint32_t subMenu_ihpS1 = 1;		
-uint32_t subMenu_ihpS2 = 1;		
+uint32_t subMenu_ihpS1 = 1;
+uint32_t subMenu_ihpS2 = 1;
 
-uint32_t subMenu_goSam1 = 1;		
-uint32_t subMenu_goSam2 = 1;		
+uint32_t subMenu_goSam1 = 1;
+uint32_t subMenu_goSam2 = 1;
 
 uint32_t req = 0;
 uint32_t slaveID = 1;
@@ -178,7 +169,7 @@ uint32_t slaveID = 1;
 #endif
 
 	init_system();
-	InterruptEnable_Main();	
+	InterruptEnable_Main();
 //=====================================================
 
 //=====================================================
@@ -233,7 +224,7 @@ IntFanConOff();
 	Init_rtcTime();
 
 #if 1
-	initValue();	
+	initValue();
 
 //	APC_Rs422_PacketParse_init();
 //dp0("APC_Rs422_PacketParse_init\r\n");
@@ -264,9 +255,9 @@ IntFanConOff();
 
 // 20210602
 	eepromRead_Data(HOME_ADJUST_VERSION_CHECK_ADDR, HOME_ADJUST_VERSION_CHECK_SIZE,(uint8_t *)(&devSet.adjust_ver));
-	eepromRead_Data(HOME_ADJUST_DATA_STARTADDR,sizeof(devSet.adjust),devSet.adjust.saveFlag);	
+	eepromRead_Data(HOME_ADJUST_DATA_STARTADDR,sizeof(devSet.adjust),devSet.adjust.saveFlag);
 	checkAdjustData();
-	
+
 	initCoordinate();
 
 #endif
@@ -278,7 +269,7 @@ IntFanConOff();
 
 //	PID_Control_Init();
 //	pLed_Control_Fn = led_Control;
-//	pLed_Control_Fn = led_Control_Blank;				
+//	pLed_Control_Fn = led_Control_Blank;
 
 //	init_Send_func();
 
@@ -287,7 +278,7 @@ IntFanConOff();
 //	pTime_Event_Fn = time_Event_Blank;
 
 // =========================================================================================
-// 초기화 작업 : ADC 초기화 작업 
+// 초기화 작업 : ADC 초기화 작업
 // -----------------------------------------------------------------------------------------
 	while(adcif.State != ADCST_RUN) {
 		if(TimeEvent)		// 1msec
@@ -347,7 +338,7 @@ IntFanConOff();
 		if(TimeEvent)		// 1msec
 		{
 			TimeEvent = NO;
-TimeEvent_1ms = YES;			
+TimeEvent_1ms = YES;
 
 #if RS422_ENABLE
 #if RS422_MASTER
@@ -427,9 +418,9 @@ TimeEvent_1ms = YES;
 #endif
 
 					if(++rs422TstatCheckCnt >= CNT_RS422_TSTAT_CHECK) {		// 20Hz
-						rs422TstatCheckCnt = 0;					
-#if 0					
-						if(rs422if.TSTAT == 0) 
+						rs422TstatCheckCnt = 0;
+#if 0
+						if(rs422if.TSTAT == 0)
 						{	// 처음엔 완료로 셋팅
 							// 송신버퍼가 비워지지 않아서 보내지 못한 데이터가 있다.
 							// Slave의 경우임.
@@ -445,7 +436,7 @@ TimeEvent_1ms = YES;
 						rtcRead_time(RTC_SECONDS_REG_ADDR,time);
 //						get_RtcTime();
 
-// 인터럽트 루틴에서 동작하지 않도록 - 속도가 느려서 .... 문제 발생 
+// 인터럽트 루틴에서 동작하지 않도록 - 속도가 느려서 .... 문제 발생
 					if(devState.save_EEPROM_sysConfig == YES) {
 						if(save_EEPROM_sysConfig_data()) {
 							devState.save_EEPROM_sysConfig = NO;
@@ -472,7 +463,7 @@ TimeEvent_1ms = YES;
 					else {	// send cmd
 						int ret = rs422_REQUEST_Send(slaveID);	// Master --> Slave
 						req = 0;
- 						if(++slaveID == 3) slaveID = 1;					
+ 						if(++slaveID == 3) slaveID = 1;
 					}
 #endif
 					break;
@@ -485,7 +476,7 @@ TimeEvent_1ms = YES;
 
 		pAction_Fn[devState.actionMenu](0);		// Action();
 
-//==========================================================================		
+//==========================================================================
 #if 0	// 테스트 - 터미널 입력
 		if (((g_mss_uart0.hw_reg->LSR)&0x01) == 1 )
 		{
@@ -494,7 +485,7 @@ TimeEvent_1ms = YES;
 			cmd = 'X';
 		}
 #endif
-//==========================================================================					
+//==========================================================================
 		}// if(TimeEvent)
 
 // RYU_SF2
@@ -505,10 +496,10 @@ TimeEvent_1ms = YES;
 #endif
 
 	}	//for(;;)
-		
+
 #ifdef USED_RECV_QUEUE		//(+)210715 CJKIM, Received data process changing
 		deinit_queue();
-#endif	
+#endif
 
 }
 
@@ -518,7 +509,7 @@ void testMain()
 #if 0
 #define	MAX_VALUE		104
 #define	OFFSET_VALUE		4
-	
+
 	uint8_t pos = 0;
 	uint8_t pBuffer[MAX_VALUE] = {0};
 	for(int i=0;i<MAX_VALUE;i++) {
@@ -526,7 +517,7 @@ void testMain()
 		//pTxMem[i] = i;
 		pTxMem_byte[i] = 0;
 	}
-	
+
 	/*
 	for(int i=0; i < (MAX_VALUE / OFFSET_VALUE) ;i++) {
 		//memcpy((&pTxMem_byte[i]), &pBuffer[pos], 4);
@@ -534,12 +525,12 @@ void testMain()
 		pos += OFFSET_VALUE;
 	}
 	*/
-	
-	
+
+
 	//memcpy((&pBuffer[0]), &LcasState, size);
 	memcpy(pTxMem_byte, pBuffer, MAX_VALUE-4);
-	
-	
+
+
 	for(int i=0;i<48;i++) {
 	iprintf("align 8 [%d] - %x %x\n",i,pBuffer[i],pTxMem_byte[i]);
 	}
@@ -556,16 +547,16 @@ void testMain()
 	iprintf("rtc_time = "); for(i=0 ; i<7; i++) { iprintf("%x : ",time[i]); } iprintf("\n");
 							}
 #endif
-	
+
 #define PUMP_TEST		0
 #if PUMP_TEST
 	static int k = 0;
 	PumpConOn(k++);
-	if(k >= 256) k=0; 												
+	if(k >= 256) k=0;
 	iprintf("k=%d\n",k);
 #endif
 
-	//dfp("s1[%08X] s2[%08X] m3[%08X]\n",samState.btMotorState[MOTOR_SAM1], samState.btMotorState[MOTOR_SAM2], samState.btMotorState[MOTOR_M3]);						
+	//dfp("s1[%08X] s2[%08X] m3[%08X]\n",samState.btMotorState[MOTOR_SAM1], samState.btMotorState[MOTOR_SAM2], samState.btMotorState[MOTOR_M3]);
 
 }
 
